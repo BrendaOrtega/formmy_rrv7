@@ -30,7 +30,7 @@ import useLocalStorage from "~/lib/hooks/useLocalStorage";
 import { db } from "~/utils/db.server";
 // import scrollbarStyles from "~/styles/app.css";
 import { ProTag } from "~/components/ProTag";
-import { getUserOrRedirect } from ".server/getUserUtils";
+import { getUserOrRedirect } from "server/getUserUtils.server";
 import { Sorter } from "~/components/dragNdrop/NewSorter";
 import { motion } from "framer-motion";
 import { cn } from "~/lib/utils";
@@ -576,7 +576,7 @@ export const CheckInput = forwardRef(
         htmlFor={name}
         dragSnapToOrigin
         className={cn(
-          "rounded-lg border font-light border-[#E3E1E1] dark:border-clear/20 py-1 px-2 text-sm text-gray-500 flex items-center justify-between w-32 h-[36px] bg-[white] dark:bg-transparent cursor-grab relative",
+          "rounded-lg border font-light border-outlines py-1 px-2 text-sm text-dark flex items-center justify-between w-28 md:w-32 h-[36px] bg-[white]  cursor-grab relative",
           {
             "": true,
           }

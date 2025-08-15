@@ -1,5 +1,7 @@
+// @todo is this deprecated?
+
 import Nav from "~/components/NavBar";
-import { getUserOrRedirect } from ".server/getUserUtils";
+import { getUserOrRedirect } from "server/getUserUtils.server";
 import { twMerge } from "tailwind-merge";
 import {
   Link,

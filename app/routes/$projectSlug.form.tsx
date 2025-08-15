@@ -10,7 +10,7 @@ import { z } from "zod";
 import { db } from "~/utils/db.server";
 import { EmojiConfetti } from "~/components/EmojiConffeti";
 import Spinner from "~/components/Spinner";
-import { getUserOrRedirect } from ".server/getUserUtils";
+import { getUserOrRedirect } from "server/getUserUtils.server";
 
 const formSchema = z.object({
   name: z.string().min(3, { message: "Este campo es necesario" }),
@@ -82,7 +82,7 @@ export default function ProjectSlug() {
 
   if (searchParams.get("success")) {
     return (
-      <section className="min-h-screen text-center flex flex-col justify-center">
+      <section className="min-h-svh text-center flex flex-col justify-center">
         <h2 className="text-3xl">¡Muchas gracias!</h2>
         <p className="text-xl">Pronto me comunicare contigo 🌀</p>
         <div>
