@@ -23,17 +23,30 @@ export default {
         ],
       },
       colors: {
-        white: "#ECECED",
-        dark: "#0E0E11",
+        dark: "#191A20",
         hole: "#0A0A0C",
-        // irongray: "#888888",
-        irongray: "#878893",
-        lightgray: "#1B1B1D",
+        metal:"#4B5563",
+        irongray: "#81838E",
+        lightgray: "#B6B6BA",
+        surface:"#F2F5F9",
+        outlines:"#E1E3E7",
+        perl:"#E9EBEF",
+        secondary:"#E1E3E7",
+        surfaceThree:"#F6F6FA",
+        surfaceFour:"#F6F6F6",
+        danger:"#ED695F",
+        success:"#5FA46F",
         iman: "#EFEFEF",
+        bird:"#EDC75A",
+        pro:"#F2C94C",
+        cloud:"#8AD7C9",
+        grass:"#7FBE60",
+        salmon:"#E4AE8E",
         brand: {
-          100: "#F7F7F9",
+          100: "#F5F5FC",
           300: "#AEADEF",
           500: "#9A99EA",
+          600: "#8483E0",
           800: "#161720",
         },
         space: {
@@ -63,6 +76,12 @@ export default {
       backgroundImage: {
         pattern: "url('/assets/pattern.svg')",
         patternwhite: "url('/assets/pattern-w.svg')",
+        steperCover: "url('/home/steper-cover.webp')",
+        actionsBack: "url('/dash/actions-back.svg')",
+        chatPattern:"url('/dash/chat-pattern.webp')"
+      },
+      boxShadow: {
+        standard: "8px 16px 14px #F8F8FB",
       },
       animation: {
         scroll:
@@ -110,7 +129,11 @@ export default {
       },
     },
   },
-  plugins: [require("@tailwindcss/forms"), addVariablesForColors],
+  plugins: [
+    require("@tailwindcss/forms"),
+    require("@tailwindcss/typography"),
+    addVariablesForColors,
+  ],
 } satisfies Config;
 
 function addVariablesForColors({ addBase, theme }: any) {

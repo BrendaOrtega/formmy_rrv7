@@ -2,6 +2,9 @@ import { createSearchParams, redirect } from "react-router";
 import { commitSession, getSession } from "~/sessions";
 import { db } from "~/utils/db.server";
 import { extraDataSchema, type ExtraData } from "~/utils/zod";
+import { processReferral } from "~/models/referral.server";
+import { Effect } from "effect";
+import { sendWelcomeEmail } from "~/utils/notifyers/welcome";
 
 const GOOGLE_SECRET = process.env.GOOGLE_SECRET;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -68,8 +71,8 @@ export const getAccessToken = async <Code extends string>(
 
 export function redirectToGoogle<Redirect extends (arg0: string) => Response>(
   redirect: Redirect,
-  host: string
-  // props: { params: Record<string, string> }
+  host: string,
+  state?: string
 ): Response {
   const redirect_uri = getredirectUri(host);
   console.log("?? =>>", redirect_uri);
@@ -82,6 +85,7 @@ export function redirectToGoogle<Redirect extends (arg0: string) => Response>(
     redirect_uri,
     response_type: "code",
     scope: "https://www.googleapis.com/auth/userinfo.email",
+    ...(state && { state })  // Solo incluir state si existe
   };
 
   const searchParams = createSearchParams(obj);
@@ -91,7 +95,7 @@ export function redirectToGoogle<Redirect extends (arg0: string) => Response>(
   return redirect(url.toString());
 }
 
-export const createSession = async (code: string, request: Request) => {
+export const createSession = async (code: string, request: Request, state?: string) => {
   const data: {
     error?: string;
     ok?: boolean;
@@ -119,17 +123,76 @@ export const createSession = async (code: string, request: Request) => {
     provider: "google",
     access_token: data.access_token,
   };
-  await db.user.upsert({
-    where: {
-      email: extra.email,
-    },
-    create: propieties,
-    update: propieties,
-  });
+  try {
+    // First, try to find if the user exists
+    const existingUser = await db.user.findUnique({
+      where: { email: extra.email },
+      select: { id: true, customerId: true }
+    });
+
+    if (existingUser) {
+      // If user exists, update only the necessary fields
+      await db.user.update({
+        where: { email: extra.email },
+        data: {
+          name: propieties.name,
+          picture: propieties.picture,
+          access_token: propieties.access_token,
+          provider: propieties.provider,
+          updatedAt: new Date()
+        }
+      });
+    } else {
+      // If user doesn't exist, create without customerId
+      const newUser = await db.user.create({
+        data: {
+          ...propieties,
+          customerId: undefined, // Let the database handle the default value
+          plan: 'FREE', // Ensure default plan is set
+          subscriptionIds: [] // Initialize empty array for subscriptionIds
+        },
+        select: { id: true }
+      });
+      
+      // Send welcome email to new user
+      try {
+        await sendWelcomeEmail({ email: extra.email, name: extra.name });
+      } catch (error) {
+        console.error('Error sending welcome email:', error);
+        // Don't fail registration if welcome email fails
+      }
+      
+      // Procesar referido si existe y es un nuevo usuario
+      if (state && state.startsWith('ref_')) {
+        const refCode = state.replace('ref_', '');
+        try {
+          await Effect.runPromise(processReferral(newUser.id, refCode));
+        } catch (error) {
+          console.error('Error procesando referido:', error);
+          // No fallar el proceso de registro si hay error con el referido
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error('Error in user upsert:', error);
+    // If there's still an error with customerId, try one more time with a generated ID
+    if (error?.code === 'P2002' && error?.meta?.target?.includes('customerId')) {
+      await db.user.create({
+        data: {
+          ...propieties,
+          customerId: `cust_${Date.now()}`,
+          plan: 'FREE',
+          subscriptionIds: []
+        }
+      });
+    } else {
+      throw error; // Re-throw if it's a different error
+    }
+  }
 
   session.set("userId", extra.email);
 
-  throw redirect("/dash", {
+  throw redirect("/dashboard/ghosty", {
     headers: {
       "set-cookie": await commitSession(session),
     },

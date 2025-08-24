@@ -1,7 +1,7 @@
 import { Button } from "~/components/Button";
 import { FaUsers } from "react-icons/fa";
 import { twMerge } from "tailwind-merge";
-import { getUserOrRedirect } from ".server/getUserUtils";
+import { getUserOrRedirect, getProjectWithAccess } from "server/getUserUtils.server";
 import { data as json } from "react-router";
 import {
   Form,
@@ -12,7 +12,7 @@ import {
 } from "react-router";
 import { type Permission, type User } from "@prisma/client";
 import { TrashIcon } from "~/components/icons/TrashIcon";
-import { InputModalForm } from "~/components/InputModalForm";
+import { InputModalFormWithRole } from "~/components/InputModalFormWithRole";
 import { useEffect, useState } from "react";
 import { db } from "~/utils/db.server";
 import Spinner from "~/components/Spinner";
@@ -34,9 +34,10 @@ export const action = async ({ request, params }: ActionArgs) => {
       email: String(email),
       can: { read: true },
       projectId: String(params.projectId), // @TODO: check if exists
+      resourceType: "PROJECT" as const,
     };
     const exists = await db.permission.findFirst({
-      where: { email, projectId: params.projectId },
+      where: { email, projectId: params.projectId, resourceType: "PROJECT" },
     });
     if (exists) return json({ success: true }, { status: 200 }); // retun null equivalent
     // if user add it
@@ -66,13 +67,19 @@ export const action = async ({ request, params }: ActionArgs) => {
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await getUserOrRedirect(request);
-  const project = await db.project.findUnique({
-    where: { id: params.projectId },
-  });
-  if (!project) throw json(null, { status: 404 });
+  const projectId = params.projectId!;
+  
+  // Access settings requires delete permission (admin level)
+  const access = await getProjectWithAccess(user.id, projectId, "delete");
+  
+  if (!access) {
+    throw json(null, { status: 404 });
+  }
+  
   const permissions = await db.permission.findMany({
     where: {
-      projectId: project.id,
+      projectId: access.project.id,
+      resourceType: "PROJECT",
     },
     include: {
       project: true,
@@ -82,7 +89,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   return {
     user,
     permissions,
-    projectName: project.name,
+    projectName: access.project.name,
   };
 };
 
@@ -142,7 +149,7 @@ export default function Route() {
         isLoading={navigation.state !== "idle"}
       />
       {showModal && (
-        <InputModalForm
+        <InputModalFormWithRole
           isLoading={navigation.state !== "idle"}
           onClose={() => setShowModal(false)}
           title="Ingresa el correo del usuario"

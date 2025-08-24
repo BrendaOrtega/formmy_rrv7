@@ -13,7 +13,6 @@ enum CustomFieldTypes {
   select
 }
 
-// V1
 type CustomInput {
   type        CustomFieldTypes
   title       String
@@ -71,20 +70,38 @@ enum Statuses {
   rejected
 }
 
+enum Role {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+enum ResourceType {
+  PROJECT
+  CHATBOT
+}
+
 model Permission {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
   email         String
-  status        Statuses  @default(pending) // pending | active | rejected  
+  status        Statuses      @default(pending)
+  role          Role          @default(VIEWER)
   can           Rights?
-  notifications Boolean?  @default(true)
-  // relations
-  user          User?     @relation(fields: [userId], references: [id])
-  userId        String?   @db.ObjectId // when invitation is created, we have email only, not necessarily an existing user email
-  project       Project?  @relation(fields: [projectId], references: [id])
-  projectId     String    @db.ObjectId
-  // pending state, no user but email
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime? @updatedAt
+  notifications Boolean?      @default(true)
+  resourceType  ResourceType  @default(PROJECT)
+  
+  // Usuario relacionado
+  user          User?         @relation("UserPermissions", fields: [userId], references: [id])
+  userId        String?       @db.ObjectId
+  
+  // Recurso relacionado (uno u otro)
+  project       Project?      @relation(fields: [projectId], references: [id])
+  projectId     String?       @db.ObjectId
+  chatbot       Chatbot?      @relation(fields: [chatbotId], references: [id])
+  chatbotId     String?       @db.ObjectId
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime?     @updatedAt
 }
 
 enum FormmyTypes {
@@ -99,11 +116,8 @@ model Project {
   userId      String           @db.ObjectId
   name        String
   User        User             @relation(fields: [userId], references: [id])
-  // optionals
   email       String?
-  // project permissions
   permissions Permission[]
-  // Formmy 2025: support for horizontal suscription layout
   type        FormmyTypes?     @default(contact)
   answers     Answer[]
   config      ProjectConfig
@@ -115,7 +129,15 @@ model Project {
 
 enum Plans {
   FREE
+  TRIAL
+  STARTER
   PRO
+  ENTERPRISE
+}
+
+enum ApiKeyType {
+  LIVE
+  TEST
 }
 
 model User {
@@ -127,12 +149,295 @@ model User {
   provider        String?
   refresh_token   String?
   plan            Plans        @default(FREE)
+  trialStartedAt  DateTime?    // Fecha específica de inicio del trial (para marketing/promociones)
   customerId      String?      @unique
   subscriptionIds String[]
-  // relations
   projects        Project[]
-  permissions     Permission[]
+  chatbots        Chatbot[]
+  apiKeys         ApiKey[]
+  referrals       Referral[]   @relation("Referrer")
+  permissions     Permission[] @relation("UserPermissions")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
+}
+
+enum ChatbotStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+type ChatbotNotifications {
+  weeklyDigest  Boolean @default(true)
+  usageLimit    Boolean @default(true)
+  configChanges Boolean @default(false)
+}
+
+type ChatbotSecurity {
+  allowedDomains String[]
+  rateLimit      Int     @default(100)
+  status         String  @default("public")
+}
+
+type ChatbotSettings {
+  notifications ChatbotNotifications
+  security      ChatbotSecurity
+}
+
+enum ContextType {
+  FILE
+  LINK
+  TEXT
+  QUESTION
+}
+
+type ContextItem {
+  id        String
+  type      ContextType
+  fileName  String?
+  fileType  String?
+  fileUrl   String?
+  url       String?
+  title     String?
+  sizeKB    Int?
+  content   String?
+  routes    String[]  @default([])
+  questions String?
+  answer    String?
+  createdAt DateTime
+}
+
+model Chatbot {
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  slug              String           @unique
+  name              String
+  description       String?
+  personality       String?
+  welcomeMessage    String?
+  goodbyeMessage    String?
+  aiModel           String           @default("mistralai/mistral-small-3.2-24b-instruct")
+  temperature       Float            @default(1)
+  instructions      String?
+  customInstructions String?
+  contexts          ContextItem[]
+  primaryColor      String?
+  avatarUrl         String?
+  theme             String?          @default("light")
+  enableStreaming   Boolean          @default(true)
+  streamingSpeed    Int              @default(50)
+  status            ChatbotStatus    @default(DRAFT)
+  isActive          Boolean          @default(false)
+  conversationCount Int              @default(0)
+  monthlyUsage      Int              @default(0)
+  contextSizeKB     Int              @default(0)
+  settings          ChatbotSettings?
+  userId            String           @db.ObjectId
+  user              User             @relation(fields: [userId], references: [id])
+  permissions       Permission[]
+  conversations     Conversation[]
+  integrations      Integration[]
+  apiKeys           ApiKey[]
+  scheduledActions  ScheduledAction[]
+  contacts          Contact[]
+  toolUsages        ToolUsage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String?  // Nombre completo
+  email       String?  // Email de contacto
+  phone       String?  // Teléfono
+  company     String?  // Empresa/organización
+  position    String?  // Cargo/posición
+  website     String?  // Sitio web
+  notes       String?  // Notas adicionales o contexto
+  source      String   @default("chatbot") // Fuente: chatbot, whatsapp, etc.
+  
+  // Relaciones
+  chatbotId   String   @db.ObjectId
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id])
+  
+  conversationId String? @db.ObjectId
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+  
+  // Metadatos
+  capturedAt  DateTime @default(now())
+  lastUpdated DateTime @updatedAt
+  
+  // Índices para búsqueda eficiente
+  @@index([email])
+  @@index([chatbotId])
+  @@index([capturedAt])
+}
+
+model ScheduledAction {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  chatbotId String   @db.ObjectId
+  chatbot   Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  
+  type      String   // 'email', 'webhook', 'sms'
+  data      Json     // everything needed to execute
+  runAt     DateTime @map("run_at")
+  status    String   @default("pending") // 'pending', 'done', 'failed'
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("scheduled_actions")
+}
+
+enum ConversationStatus {
+  ACTIVE
+  COMPLETED
+  TIMEOUT
+  DELETED
+}
+
+model Conversation {
+  id           String             @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId    String             @unique
+  visitorIp    String?
+  visitorId    String?
+  status       ConversationStatus @default(ACTIVE)
+  startedAt    DateTime           @default(now())
+  endedAt      DateTime?
+  messageCount Int                @default(0)
+  isFavorite   Boolean            @default(false)
+  chatbotId    String             @db.ObjectId
+  chatbot      Chatbot            @relation(fields: [chatbotId], references: [id])
+  messages     Message[]
+  contacts     Contact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model Message {
+  id                String       @id @default(auto()) @map("_id") @db.ObjectId
+  content           String
+  role              MessageRole
+  deleted           Boolean      @default(false)
+  picture           String?
+  channel           String?
+  externalMessageId String?
+  tokens            Int?         // Tokens totales (deprecated, usar inputTokens + outputTokens)
+  inputTokens       Int?         // Tokens de entrada (input)
+  outputTokens      Int?         // Tokens de salida (output/completion)
+  cachedTokens      Int?         // Cached input tokens (GPT-5-nano: 90% descuento)
+  totalCost         Float?       // Costo total en USD
+  provider          String?      // Proveedor: openai, anthropic, openrouter
+  responseTime      Int?
+  firstTokenLatency Int?
+  aiModel           String?      // Modelo de IA usado para generar esta respuesta (solo para ASSISTANT messages)
+  conversationId    String       @db.ObjectId
+  conversation      Conversation @relation(fields: [conversationId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum IntegrationType {
+  WHATSAPP
+  GOOGLE_CALENDAR
+  STRIPE
+}
+
+model Integration {
+  id                 String          @id @default(auto()) @map("_id") @db.ObjectId
+  platform           IntegrationType
+  token              String?         // Token de acceso para la API
+  refreshToken       String?         // Token de actualización para OAuth
+  isActive           Boolean         @default(true)
+  
+  // Campos específicos de WhatsApp
+  phoneNumberId      String?         // ID del número de teléfono en WhatsApp
+  businessAccountId  String?         // ID de la cuenta de negocio en WhatsApp
+  webhookVerifyToken String?         // Token para verificar el webhook de WhatsApp
+  
+  // Campos específicos de Google Calendar
+  calendarId         String?         // ID del calendario (por defecto 'primary')
+  clientId           String?         // Client ID de OAuth 2.0
+  clientSecret       String?         // Client Secret de OAuth 2.0
+  redirectUri        String?         // URI de redirección para OAuth
+  
+  // Campos específicos de Stripe
+  stripeApiKey       String?         // API Key de Stripe (secret key)
+  stripePublishableKey String?       // Publishable Key de Stripe
+  stripeWebhookSecret String?        // Secret para validar webhooks de Stripe
+  
+  // Campos de auditoría
+  lastActivity       DateTime?       // Última actividad registrada
+  errorMessage       String?         // Último mensaje de error
+  
+  // Relaciones
+  chatbotId          String          @db.ObjectId
+  chatbot            Chatbot         @relation(fields: [chatbotId], references: [id])
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Constraint único: una integración por plataforma por chatbot
+  @@unique([platform, chatbotId], map: "platform_chatbot_unique")
+}
+
+model ApiKey {
+  id              String     @id @default(auto()) @map("_id") @db.ObjectId
+  key             String     @unique
+  name            String
+  keyType         ApiKeyType @default(LIVE)
+  isActive        Boolean    @default(true)
+  lastUsedAt      DateTime?
+  requestCount    Int        @default(0)
+  monthlyRequests Int        @default(0)
+  rateLimit       Int        @default(1000)
+  allowedDomains  String[]
+  chatbotId       String     @db.ObjectId
+  chatbot         Chatbot    @relation(fields: [chatbotId], references: [id])
+  userId          String     @db.ObjectId
+  user            User       @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Referral {
+  id                    String @id @default(auto()) @map("_id") @db.ObjectId
+  referrerId            String @db.ObjectId
+  referralCode          String @unique
+  referredCount         Int    @default(0)
+  successfulConversions Int    @default(0)
+  referrer              User   @relation("Referrer", fields: [referrerId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ToolUsage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  chatbotId   String   @db.ObjectId
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  
+  toolName    String   // create_payment_link, schedule_reminder, etc.
+  success     Boolean  @default(true)
+  errorMessage String?
+  
+  // Metadata para analytics
+  userMessage String?  // Mensaje original del usuario
+  response    String?  // Respuesta generada
+  
+  // Datos específicos según herramienta (JSON flexible)
+  metadata    Json?    // { amount: 500, currency: "mxn" } para stripe, { date: "2024-08-22" } para reminder
+  
+  createdAt   DateTime @default(now())
 }
